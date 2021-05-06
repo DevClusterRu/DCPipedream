@@ -1,7 +1,6 @@
 package main
 
 import (
-	"DeviceCloudPusher/components"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -11,7 +10,7 @@ import (
 	"time"
 )
 
-var Consumer map[int]string
+var Consumer map[int]int  //Key: DID, value: state
 
 type Hook struct {
 	CloudUrl string `json:"cloud_url"`
@@ -31,17 +30,18 @@ func hookCatch(w http.ResponseWriter, req *http.Request) {
 
 	var state int
 	//online|offline|busy
-	if hook.DeviceStatus=="online"{
+	if hook.DeviceStatus=="offline"{
 		state = 1
 	}
-	if hook.DeviceStatus=="offline"{
-		state = 0
-	}
-	if hook.DeviceStatus=="busy"{
+	if hook.DeviceStatus=="online"{
 		state = 2
 	}
+	if hook.DeviceStatus=="busy"{
+		state = 3
+	}
 
-	Consumer[hook.Did] = `DeviceCloudStatuses_Cloud1{Device="` + strconv.Itoa(hook.Did) + `"} ` + strconv.Itoa(state) + "\n"
+	//Consumer[hook.Did] = `DeviceCloudStatuses_Cloud1{Device="` + strconv.Itoa(hook.Did) + `"} ` + strconv.Itoa(state) + "\n"
+	Consumer[hook.Did] = state
 
 	w.Header().Set("Content-Type", "application/json")
 
@@ -54,13 +54,15 @@ func hookCatch(w http.ResponseWriter, req *http.Request) {
 
 }
 
-func SendPusher(metric *map[int]string) {
+func SendPusher(metric *map[int]int) {
 
 	for {
 		s := ""
-
-		for _, v := range *metric {
-			s += v
+		for k, v := range *metric {
+			s += `DeviceCloudStatuses_AllClouds{Device="` + strconv.Itoa(k) + `"} ` + strconv.Itoa(v) + "\n"
+			if Consumer[k] < 30 {
+				Consumer[k] += 10
+			}
 		}
 
 		//fmt.Println(s)
@@ -75,28 +77,44 @@ func SendPusher(metric *map[int]string) {
 		res, _ := client.Do(req)
 		res.Body.Close()
 
+
+
 		time.Sleep(5*time.Second)
 	}
 }
 
 func hnd(w http.ResponseWriter, req *http.Request) {
-	for _, v:=range Consumer{
-		fmt.Fprintf(w, v)
+	for k, v:=range Consumer{
+		fmt.Fprintf(w, `DeviceCloudStatuses_AllClouds{Device="` + strconv.Itoa(k) + `"} ` + strconv.Itoa(v) + "\n")
 	}
 }
 
 func pingAlive()  {
 	for {
-		components.SendPusher(`DeviceCloudPipedream_alive 1` + "\n")
+
+		client := &http.Client{}
+		req, err := http.NewRequest("POST", "http://3.22.234.194/metrics/job/device_statuses", bytes.NewReader([]byte(`DeviceCloudPipedream_alive 1` + "\n")))
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		req.SetBasicAuth("pusher", "rtU2ssvx@")
+		req.Header.Add("Content-type", "text/plain")
+		res, _ := client.Do(req)
+		res.Body.Close()
+
 		time.Sleep(time.Second*5)
 	}
 }
+
+
+
 
 func main() {
 
 
 
-	Consumer = make(map[int]string)
+	Consumer = make(map[int]int)
 
 	go pingAlive()
 
