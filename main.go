@@ -54,11 +54,11 @@ func hookCatch(w http.ResponseWriter, req *http.Request) {
 
 }
 
-func SendPusher(metric *map[int]int) {
+func SendPusher(metric map[int]int) {
 
 	for {
 		s := ""
-		for k, v := range *metric {
+		for k, v := range metric {
 			s += `DeviceCloudStatuses_AllClouds{Device="` + strconv.Itoa(k) + `"} ` + strconv.Itoa(v) + "\n"
 			if Consumer[k] < 30 {
 				Consumer[k] += 10
@@ -90,10 +90,10 @@ func hnd(w http.ResponseWriter, req *http.Request) {
 }
 
 func pingAlive()  {
+	aliver:=1
 	for {
-
 		client := &http.Client{}
-		req, err := http.NewRequest("POST", "http://3.22.234.194/metrics/job/device_statuses", bytes.NewReader([]byte(`DeviceCloudPipedream_alive 1` + "\n")))
+		req, err := http.NewRequest("POST", "http://3.22.234.194/metrics/job/device_statuses", bytes.NewReader([]byte(`DeviceCloudPipedream_alive `+strconv.Itoa(aliver) + "\n")))
 		if err != nil {
 			log.Println(err)
 			continue
@@ -103,6 +103,11 @@ func pingAlive()  {
 		res, _ := client.Do(req)
 		res.Body.Close()
 
+		if aliver==1 {
+			aliver = 2
+		} else {
+			aliver = 1
+		}
 		time.Sleep(time.Second*5)
 	}
 }
@@ -118,7 +123,7 @@ func main() {
 
 	go pingAlive()
 
-	go SendPusher(&Consumer)
+	go SendPusher(Consumer)
 
 	http.HandleFunc("/getDeviceHealth", hnd)
 	http.HandleFunc("/hook", hookCatch)
